@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TITLE</title>
+<!--
+  Starter for a single-file study. Everything here is plumbing; none of it is design.
+  Replace every token, stack and string. Delete the parts the piece does not use
+  (no canvas? drop the stage; no sound? drop the audio block).
+-->
+<style>
+:root{
+  /* Palette from the brief: 4 to 6 named colours, each with a job. */
+  --ground:#000; --ink:#000; --a:#000; --b:#000;
+  /* Type roles from the brief. System stacks only, no network. */
+  --display:serif; --text:sans-serif; --num:monospace;
+  /* Two or three easings named for what they do in this piece. */
+  --settle:cubic-bezier(.16,.84,.24,1);
+  --pop:cubic-bezier(.34,1.56,.64,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;min-height:100dvh;background:var(--ground);color:var(--ink);
+  font-family:var(--text);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+button{font:inherit;color:inherit}
+
+/* The canvas. Full-size here only as a neutral start: size and place it as the composition needs
+   (inside a figure, beside text, on a sheet). touch-action:none only on a surface that is dragged. */
+.stage{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none}
+
+/* Entrance: write the brief's own sequence here (a wipe, a draw-in, a drop), staggered with --i:
+   animation-delay:calc(var(--i,0) * 70ms + 120ms). No stock fade-and-rise. */
+
+@media (prefers-reduced-motion:reduce){
+  /* switch each animation off AND set its end state, so nothing is left at opacity 0 */
+  *{scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<canvas class="stage" id="stage" aria-hidden="true"></canvas>
+<main>
+  <h1>TITLE</h1>
+  <p class="vh" id="live" aria-live="polite"></p>
+</main>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- seeded randomness: same seed, same piece ---------- */
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let seed = (Date.now() ^ (Math.random()*1e9)) >>> 0;
+let rnd = mulberry32(seed);
+const range = (a,b) => a + (b-a)*rnd();
+
+/* ---------- reduced motion is a live setting, not a load-time constant ---------- */
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+let calm = RM.matches;
+RM.addEventListener('change', e => { calm = e.matches; calm ? drawStill() : start(); });
+
+/* ---------- canvas sized in CSS pixels, backed at device pixels (capped) ---------- */
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+function layout(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if (calm || !raf) drawStill();
+}
+let rz = 0;
+addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(layout); });
+
+/* ---------- one loop: clamped dt, fixed-step physics, paused when hidden ---------- */
+const STEP = 1/120;
+let raf = 0, last = 0, acc = 0, t = 0;
+function frame(now){
+  raf = requestAnimationFrame(frame);
+  const dt = Math.min((now - last)/1000, 1/20); last = now;   // a background tab must not explode the sim
+  acc += dt;
+  while (acc >= STEP){ update(STEP); acc -= STEP; t += STEP; }
+  draw();
+}
+function start(){ if (!raf && !calm){ last = performance.now(); raf = requestAnimationFrame(frame); } }
+function stop(){ cancelAnimationFrame(raf); raf = 0; }
+document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+
+function update(h){ /* advance the world by h seconds */ }
+function draw(){ ctx.clearRect(0,0,W,H); /* paint the world */ }
+function drawStill(){ stop(); draw(); }   // the reduced-motion composition: a finished still, never a blank
+
+/* ---------- one pointer path for mouse, pen and touch ---------- */
+const ptr = {x:0, y:0, down:false};
+function at(e){ const r = cv.getBoundingClientRect(); ptr.x = e.clientX - r.left; ptr.y = e.clientY - r.top; }
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.down = true; at(e); });
+cv.addEventListener('pointermove', at);
+const up = () => { ptr.down = false; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+
+/* ---------- every pointer action has a key ---------- */
+addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select,[contenteditable]')) return;
+  // if (e.key === ' ') { e.preventDefault(); ... }
+});
+
+/* ---------- sound: off until asked, built on the first gesture ---------- */
+let ac = null, master = null;
+function soundOn(){
+  if (!ac){
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.gain.value = 0; master.connect(ac.destination);
+  }
+  ac.resume(); master.gain.setTargetAtTime(.5, ac.currentTime, .05);
+}
+function soundOff(){ if (ac) master.gain.setTargetAtTime(0, ac.currentTime, .05); }
+
+/* ---------- announce state changes that are only visible ---------- */
+const live = document.getElementById('live');
+const say = msg => { live.textContent = msg; };
+
+layout(); start();
+})();
+</script>
+</body>
+</html>
